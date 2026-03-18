@@ -254,6 +254,71 @@ def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
     return meta, cover_data
 
 
+def extract_lrf_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
+    """Extract metadata from LRF (Sony Reader BBeB) files."""
+    meta = {
+        "title": file_path.stem,
+        "author": "",
+        "description": "",
+        "publisher": "",
+        "language": "",
+        "isbn": "",
+        "tags": "",
+    }
+    cover_data = None
+
+    try:
+        data = file_path.read_bytes()
+
+        # Magic: "LRF" encoded as UTF-16LE
+        if not data.startswith(b'\x4c\x00\x52\x00\x46\x00'):
+            return meta, None
+
+        # Header thumbnail:
+        # offset 34: thumbnail type (uint16 LE) — 1=JPEG, 2=PNG
+        # offset 36: thumbnail size (uint32 LE)
+        # offset 48: thumbnail bytes
+        if len(data) > 48:
+            thumb_type = struct.unpack_from('<H', data, 34)[0]
+            thumb_size = struct.unpack_from('<I', data, 36)[0]
+            if thumb_type in (1, 2) and 0 < thumb_size <= len(data) - 48:
+                cover_data = data[48:48 + thumb_size]
+
+        # BookInformation metadata is a UTF-16LE XML block embedded in the file
+        marker = '<BookInformation'.encode('utf-16-le')
+        end_marker = '</BookInformation>'.encode('utf-16-le')
+        start = data.find(marker)
+        if start != -1:
+            end = data.find(end_marker, start)
+            if end != -1:
+                xml_text = data[start:end + len(end_marker)].decode('utf-16-le', errors='replace')
+
+                def get_lrf_tag(tag: str) -> str:
+                    m = re.search(rf'<{tag}[^>]*>([^<]+)</{tag}>', xml_text, re.IGNORECASE)
+                    return m.group(1).strip() if m else ''
+
+                title = get_lrf_tag('Title')
+                author = get_lrf_tag('Author')
+                publisher = get_lrf_tag('Publisher')
+                description = get_lrf_tag('Abstract')
+                language = get_lrf_tag('Language')
+
+                if title:
+                    meta['title'] = title
+                if author:
+                    meta['author'] = author
+                if publisher:
+                    meta['publisher'] = publisher
+                if description:
+                    meta['description'] = description
+                if language:
+                    meta['language'] = language
+    except Exception:
+        pass
+
+    return meta, cover_data
+
+
 def extract_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
     suffix = file_path.suffix.lower()
     if suffix == ".epub":
@@ -262,6 +327,8 @@ def extract_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
         return extract_pdf_metadata(file_path)
     elif suffix in (".mobi", ".azw", ".azw3"):
         return extract_mobi_metadata(file_path)
+    elif suffix == ".lrf":
+        return extract_lrf_metadata(file_path)
     else:
         return {
             "title": file_path.stem,

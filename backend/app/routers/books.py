@@ -16,7 +16,7 @@ from .auth import get_current_user
 
 router = APIRouter(prefix="/api/books", tags=["books"], dependencies=[Depends(get_current_user)])
 
-ALLOWED_FORMATS = {".epub", ".pdf", ".mobi", ".azw", ".azw3", ".fb2", ".cbz", ".cbr"}
+ALLOWED_FORMATS = {".epub", ".pdf", ".mobi", ".azw", ".azw3", ".fb2", ".cbz", ".cbr", ".lrf"}
 
 
 class BookResponse(BaseModel):
