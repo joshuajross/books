@@ -80,29 +80,6 @@ export async function applyMetadata(bookId, data) {
   if (!res.ok) throw new Error('Failed to apply metadata')
 }
 
-// Format conversion
-export async function convertBook(bookId, targetFormat) {
-  const res = await fetch(`${BASE}/convert/${bookId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ target_format: targetFormat }),
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.detail || 'Conversion failed')
-  }
-  // Trigger download
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  const cd = res.headers.get('content-disposition') || ''
-  const m = cd.match(/filename="([^"]+)"/)
-  a.download = m ? m[1] : `book.${targetFormat}`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 // Calibre import
 export async function importCalibre(calibrePath) {
   const res = await fetch(`${BASE}/library/import-calibre`, {

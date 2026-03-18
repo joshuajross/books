@@ -2,19 +2,10 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, Download, Send, Trash2, Edit2, Check, X,
-  BookOpen, Loader2, Sparkles, RefreshCw, BookMarked,
+  BookOpen, Loader2, Sparkles, BookMarked,
 } from 'lucide-react'
-import { fetchBooks, updateBook, deleteBook, sendBook, downloadUrl, fetchSettings, convertBook } from '../api'
+import { fetchBooks, updateBook, deleteBook, sendBook, downloadUrl, fetchSettings } from '../api'
 import MetadataSearch from '../components/MetadataSearch'
-
-const CONVERSION_MATRIX = {
-  epub: ['pdf', 'mobi', 'azw3', 'fb2', 'txt'],
-  pdf:  ['epub', 'txt'],
-  mobi: ['epub', 'pdf', 'azw3'],
-  azw:  ['epub', 'pdf', 'mobi'],
-  azw3: ['epub', 'pdf', 'mobi'],
-  fb2:  ['epub', 'pdf', 'mobi'],
-}
 
 function Field({ label, value, editing, name, onChange }) {
   return (
@@ -44,9 +35,6 @@ export default function BookDetail() {
   const [sending, setSending] = useState(false)
   const [sendStatus, setSendStatus] = useState('')
   const [emailConfigured, setEmailConfigured] = useState(false)
-  const [convAvailable, setConvAvailable] = useState(false)
-  const [converting, setConverting] = useState(false)
-  const [convFormat, setConvFormat] = useState('')
 
   const loadBook = () =>
     fetchBooks().then((books) => books.find((b) => b.id === Number(id)))
@@ -56,7 +44,6 @@ export default function BookDetail() {
       if (!b) { navigate('/'); return }
       setBook(b)
       setEmailConfigured(settings.email_configured)
-      setConvAvailable(settings.conversion_available)
       setLoading(false)
     })
   }, [id, navigate])
@@ -89,14 +76,6 @@ export default function BookDetail() {
     finally { setSending(false) }
   }
 
-  const handleConvert = async () => {
-    if (!convFormat) return
-    setConverting(true)
-    try { await convertBook(book.id, convFormat) }
-    catch (err) { alert(err.message) }
-    finally { setConverting(false) }
-  }
-
   const handleMetaApplied = async () => {
     const updated = await loadBook()
     if (updated) setBook(updated)
@@ -110,8 +89,6 @@ export default function BookDetail() {
       </div>
     )
   }
-
-  const convTargets = CONVERSION_MATRIX[book.file_format] || []
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -215,40 +192,6 @@ export default function BookDetail() {
             <p className="text-xs text-gray-400 mt-2">
               Kindle: use your <em>@kindle.com</em> address. Kobo: use Send to Kobo.
             </p>
-          </div>
-        )}
-
-        {/* Convert format */}
-        {convTargets.length > 0 && (
-          <div className="mt-4 flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-            <RefreshCw className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <span className="text-sm text-gray-600 flex-shrink-0">Convert to</span>
-            {convAvailable ? (
-              <>
-                <select className="input flex-1" value={convFormat} onChange={(e) => setConvFormat(e.target.value)}>
-                  <option value="">Choose format…</option>
-                  {convTargets.map((f) => <option key={f} value={f}>{f.toUpperCase()}</option>)}
-                </select>
-                <button
-                  className="btn-ghost flex-shrink-0"
-                  onClick={handleConvert}
-                  disabled={!convFormat || converting}
-                >
-                  {converting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  Convert & Download
-                </button>
-              </>
-            ) : (
-              <div className="flex-1">
-                <p className="text-sm text-amber-600 font-medium">Calibre not installed on the server</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  To enable conversion, install Calibre on the server and make sure <code>ebook-convert</code> is on the PATH.{' '}
-                  <a href="https://calibre-ebook.com/download" target="_blank" rel="noreferrer" className="text-brand-600 underline">
-                    Download Calibre →
-                  </a>
-                </p>
-              </div>
-            )}
           </div>
         )}
 

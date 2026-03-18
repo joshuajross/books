@@ -42,7 +42,6 @@ export default function Settings() {
             {[
               ['Email (Send to eReader)', srvSettings.email_configured],
               ['Google Books API', srvSettings.google_books_configured],
-              ['Format Conversion (Calibre)', srvSettings.conversion_available],
             ].map(([label, ok]) => (
               <li key={label} className="flex items-center gap-2 text-sm">
                 {ok

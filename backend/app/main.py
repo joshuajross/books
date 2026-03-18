@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import os
 
 from app.models.database import init_db
-from app.routers import books, send, settings_router, opds, metadata, convert, library
+from app.routers import books, send, settings_router, opds, metadata, library
 from app.config import settings as app_settings
 
 
@@ -30,7 +30,6 @@ app.include_router(send.router)
 app.include_router(settings_router.router)
 app.include_router(opds.router)
 app.include_router(metadata.router)
-app.include_router(convert.router)
 app.include_router(library.router)
 
 # Serve React frontend in production
