@@ -187,8 +187,12 @@ def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
                     return meta, pdf_cover
                 finally:
                     tmp.unlink(missing_ok=True)
-            log.warning("MOBI magic not found in %s — got %r (first 32 bytes of rec0: %s)",
-                        file_path.name, rec0[MOBI_OFF:MOBI_OFF + 4], rec0[:32].hex())
+            has_pdf = data.find(b'%PDF-') != -1
+            log.warning(
+                "MOBI magic not found in %s — rec0 len=%d, has_pdf=%s, "
+                "num_records=%d, first 64 file bytes: %s",
+                file_path.name, len(rec0), has_pdf, num_records, data[:64].hex(),
+            )
             return meta, None
 
         mobi_len = struct.unpack_from(">I", rec0, MOBI_OFF + 4)[0]
@@ -336,7 +340,15 @@ def extract_lrf_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
         language = find_utf16_tag('Language')
 
         if not any([title, author, publisher]):
-            log.warning("LRF: no metadata tags found in %s", file_path.name)
+            title_bytes = '<Title'.encode('utf-16-le')
+            log.warning(
+                "LRF: no metadata tags found in %s — file size=%d, "
+                "Title marker present=%s, first 64 bytes: %s, bytes 48-112: %s",
+                file_path.name, len(data),
+                data.find(title_bytes) != -1,
+                data[:64].hex(),
+                data[48:112].hex(),
+            )
 
         if title:
             meta['title'] = title
