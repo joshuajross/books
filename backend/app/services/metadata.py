@@ -1,5 +1,6 @@
 """Extract metadata and covers from ebook files."""
 import re
+import struct
 import zipfile
 import io
 from pathlib import Path
@@ -132,16 +133,139 @@ def extract_pdf_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
     return meta, cover_data
 
 
+def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
+    """Extract metadata from MOBI/AZW/AZW3 files by parsing PalmDB and EXTH headers."""
+    meta = {
+        "title": file_path.stem,
+        "author": "",
+        "description": "",
+        "publisher": "",
+        "language": "",
+        "isbn": "",
+        "tags": "",
+    }
+    cover_data = None
+
+    try:
+        data = file_path.read_bytes()
+
+        # PalmDB: number of records at offset 76
+        num_records = struct.unpack_from(">H", data, 76)[0]
+        if num_records < 1:
+            return meta, None
+
+        # Build record offset table (each entry: 4-byte offset + 4-byte uid)
+        record_offsets = []
+        for i in range(num_records):
+            off = struct.unpack_from(">I", data, 78 + i * 8)[0]
+            record_offsets.append(off)
+
+        def record_data(idx: int) -> bytes:
+            start = record_offsets[idx]
+            end = record_offsets[idx + 1] if idx + 1 < len(record_offsets) else len(data)
+            return data[start:end]
+
+        rec0 = record_data(0)
+
+        # MOBI header begins at offset 16 in record 0 (after PalmDOC header)
+        MOBI_OFF = 16
+        if rec0[MOBI_OFF:MOBI_OFF + 4] != b"MOBI":
+            return meta, None
+
+        mobi_len = struct.unpack_from(">I", rec0, MOBI_OFF + 4)[0]
+
+        # Title stored inside record 0
+        title_off = struct.unpack_from(">I", rec0, MOBI_OFF + 84)[0]
+        title_len = struct.unpack_from(">I", rec0, MOBI_OFF + 88)[0]
+        if title_off and title_len:
+            raw = rec0[title_off:title_off + title_len]
+            t = raw.decode("utf-8", errors="replace").strip()
+            if t:
+                meta["title"] = t
+
+        # First image record index (for cover extraction)
+        first_image_rec = struct.unpack_from(">I", rec0, MOBI_OFF + 108)[0]
+
+        # EXTH present if bit 6 of flags is set
+        exth_flags = struct.unpack_from(">I", rec0, MOBI_OFF + 128)[0]
+        cover_offset_exth = None
+
+        if exth_flags & 0x40:
+            exth_start = MOBI_OFF + mobi_len
+            if rec0[exth_start:exth_start + 4] == b"EXTH":
+                num_exth = struct.unpack_from(">I", rec0, exth_start + 8)[0]
+                pos = exth_start + 12
+                authors = []
+                tags = []
+                for _ in range(num_exth):
+                    if pos + 8 > len(rec0):
+                        break
+                    rtype = struct.unpack_from(">I", rec0, pos)[0]
+                    rlen = struct.unpack_from(">I", rec0, pos + 4)[0]
+                    if rlen < 8 or pos + rlen > len(rec0):
+                        break
+                    rval_bytes = rec0[pos + 8:pos + rlen]
+                    pos += rlen
+
+                    # String records
+                    if rtype in (100, 101, 103, 104, 105, 503, 524):
+                        val = rval_bytes.decode("utf-8", errors="replace").strip()
+                        if rtype == 100:
+                            authors.append(val)
+                        elif rtype == 101:
+                            meta["publisher"] = val
+                        elif rtype == 103:
+                            meta["description"] = val
+                        elif rtype == 104:
+                            m = re.search(r"\d{10,13}", val)
+                            if m:
+                                meta["isbn"] = m.group()
+                        elif rtype == 105:
+                            tags.append(val)
+                        elif rtype == 503:
+                            meta["title"] = val  # higher-priority title
+                        elif rtype == 524:
+                            meta["language"] = val
+                    # Cover offset (uint32)
+                    elif rtype == 201 and len(rval_bytes) == 4:
+                        cover_offset_exth = struct.unpack_from(">I", rval_bytes)[0]
+
+                if authors:
+                    meta["author"] = ", ".join(authors)
+                if tags:
+                    meta["tags"] = ", ".join(tags)
+
+        # Extract cover image
+        if (
+            cover_offset_exth is not None
+            and cover_offset_exth != 0xFFFFFFFF
+            and first_image_rec != 0xFFFFFFFF
+        ):
+            cover_rec_idx = first_image_rec + cover_offset_exth
+            if cover_rec_idx < num_records:
+                cover_data = record_data(cover_rec_idx)
+                # Sanity check: must look like JPEG or PNG
+                if not (cover_data[:2] == b"\xff\xd8" or cover_data[:4] == b"\x89PNG"):
+                    cover_data = None
+
+    except Exception:
+        pass
+
+    return meta, cover_data
+
+
 def extract_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
     suffix = file_path.suffix.lower()
     if suffix == ".epub":
         return extract_epub_metadata(file_path)
     elif suffix == ".pdf":
         return extract_pdf_metadata(file_path)
+    elif suffix in (".mobi", ".azw", ".azw3"):
+        return extract_mobi_metadata(file_path)
     else:
         return {
             "title": file_path.stem,
-            "author": "Unknown",
+            "author": "",
             "description": "",
             "publisher": "",
             "language": "",
