@@ -4,10 +4,13 @@ import Library from './pages/Library'
 import Upload from './pages/Upload'
 import BookDetail from './pages/BookDetail'
 import Settings from './pages/Settings'
+import Reader from './pages/Reader'
 
 export default function App() {
   return (
     <Routes>
+      {/* Reader is full-screen, outside the normal layout */}
+      <Route path="books/:id/read" element={<Reader />} />
       <Route element={<Layout />}>
         <Route index element={<Library />} />
         <Route path="upload" element={<Upload />} />

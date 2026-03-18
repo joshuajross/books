@@ -163,6 +163,26 @@ async def download_book(book_id: int, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.get("/{book_id}/raw")
+async def serve_raw(book_id: int, db: AsyncSession = Depends(get_db)):
+    """Serve the raw ebook file with appropriate MIME type (used by in-browser reader)."""
+    book = await _get_or_404(book_id, db)
+    file_path = Path(book.file_path)
+    if not file_path.exists():
+        raise HTTPException(404, "File not found on disk")
+    mime_map = {
+        "epub": "application/epub+zip",
+        "pdf": "application/pdf",
+        "cbz": "application/x-cbz",
+    }
+    media_type = mime_map.get(book.file_format, "application/octet-stream")
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        headers={"Content-Disposition": "inline"},
+    )
+
+
 @router.get("/cover/{filename}")
 async def get_cover(filename: str):
     cover_path = settings.upload_dir / filename

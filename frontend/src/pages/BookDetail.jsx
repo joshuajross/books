@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, Download, Send, Trash2, Edit2, Check, X,
-  BookOpen, Loader2, Sparkles, RefreshCw,
+  BookOpen, Loader2, Sparkles, RefreshCw, BookMarked,
 } from 'lucide-react'
 import { fetchBooks, updateBook, deleteBook, sendBook, downloadUrl, fetchSettings, convertBook } from '../api'
 import MetadataSearch from '../components/MetadataSearch'
@@ -160,7 +160,12 @@ export default function BookDetail() {
                 </>
               ) : (
                 <>
-                  <a href={downloadUrl(book.id)} download className="btn-primary">
+                  {(book.file_format === 'epub' || book.file_format === 'pdf') && (
+                    <Link to={`/books/${book.id}/read`} className="btn-primary">
+                      <BookMarked className="w-4 h-4" /> Read
+                    </Link>
+                  )}
+                  <a href={downloadUrl(book.id)} download className="btn-ghost">
                     <Download className="w-4 h-4" /> Download
                   </a>
                   <button className="btn-ghost" onClick={() => { setShowSend(!showSend); setShowMeta(false) }}>
@@ -218,19 +223,32 @@ export default function BookDetail() {
           <div className="mt-4 flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
             <RefreshCw className="w-4 h-4 text-gray-400 flex-shrink-0" />
             <span className="text-sm text-gray-600 flex-shrink-0">Convert to</span>
-            <select className="input flex-1" value={convFormat} onChange={(e) => setConvFormat(e.target.value)}>
-              <option value="">Choose format…</option>
-              {convTargets.map((f) => <option key={f} value={f}>{f.toUpperCase()}</option>)}
-            </select>
-            <button
-              className="btn-ghost flex-shrink-0"
-              onClick={handleConvert}
-              disabled={!convFormat || converting || !convAvailable}
-              title={!convAvailable ? 'Calibre not installed on server' : ''}
-            >
-              {converting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {convAvailable ? 'Convert & Download' : 'Calibre not installed'}
-            </button>
+            {convAvailable ? (
+              <>
+                <select className="input flex-1" value={convFormat} onChange={(e) => setConvFormat(e.target.value)}>
+                  <option value="">Choose format…</option>
+                  {convTargets.map((f) => <option key={f} value={f}>{f.toUpperCase()}</option>)}
+                </select>
+                <button
+                  className="btn-ghost flex-shrink-0"
+                  onClick={handleConvert}
+                  disabled={!convFormat || converting}
+                >
+                  {converting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  Convert & Download
+                </button>
+              </>
+            ) : (
+              <div className="flex-1">
+                <p className="text-sm text-amber-600 font-medium">Calibre not installed on the server</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  To enable conversion, install Calibre on the server and make sure <code>ebook-convert</code> is on the PATH.{' '}
+                  <a href="https://calibre-ebook.com/download" target="_blank" rel="noreferrer" className="text-brand-600 underline">
+                    Download Calibre →
+                  </a>
+                </p>
+              </div>
+            )}
           </div>
         )}
 
