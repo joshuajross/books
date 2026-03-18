@@ -1,8 +1,8 @@
 """Metadata lookup and apply endpoints."""
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from pydantic import BaseModel
 from typing import Optional
 
@@ -45,13 +45,38 @@ async def search_metadata(q: str):
     return [MetadataSearchResult(**r.to_dict()) for r in results]
 
 
+async def _download_cover(book_id: int, cover_url: str, old_cover_path: str | None):
+    """Background task: fetch a remote cover and persist it to the book record."""
+    import uuid
+    from app.models.database import AsyncSessionLocal
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(cover_url)
+            resp.raise_for_status()
+        cover_id = uuid.uuid4().hex
+        cover_file = settings.upload_dir / f"{cover_id}_cover.jpg"
+        cover_file.write_bytes(resp.content)
+        new_path = f"/api/books/cover/{cover_id}_cover.jpg"
+        async with AsyncSessionLocal() as db:
+            await db.execute(update(Book).where(Book.id == book_id).values(cover_path=new_path))
+            await db.commit()
+        # Remove old cover after the new one is saved
+        if old_cover_path and old_cover_path.startswith("/api/books/cover/"):
+            old = settings.upload_dir / old_cover_path.split("/")[-1]
+            if old.exists():
+                old.unlink()
+    except Exception:
+        pass  # Cover download failure is non-fatal
+
+
 @router.post("/{book_id}/apply", status_code=204)
 async def apply_metadata(
     book_id: int,
     data: ApplyMetadataRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Apply metadata (and optionally a remote cover) to a book."""
+    """Apply metadata to a book; cover download runs as a background task."""
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
@@ -62,24 +87,8 @@ async def apply_metadata(
         if val is not None:
             setattr(book, field, val)
 
-    # Download and save cover from remote URL
-    if data.cover_url:
-        try:
-            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-                resp = await client.get(data.cover_url)
-                resp.raise_for_status()
-            from pathlib import Path
-            import uuid
-            cover_id = uuid.uuid4().hex
-            cover_file = settings.upload_dir / f"{cover_id}_cover.jpg"
-            cover_file.write_bytes(resp.content)
-            # Remove old cover if present
-            if book.cover_path and book.cover_path.startswith("/api/books/cover/"):
-                old = settings.upload_dir / book.cover_path.split("/")[-1]
-                if old.exists():
-                    old.unlink()
-            book.cover_path = f"/api/books/cover/{cover_id}_cover.jpg"
-        except Exception:
-            pass  # Cover download failure is non-fatal
-
     await db.commit()
+
+    # Kick off cover download after the 204 is returned
+    if data.cover_url:
+        background_tasks.add_task(_download_cover, book_id, data.cover_url, book.cover_path)
