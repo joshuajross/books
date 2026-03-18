@@ -80,6 +80,33 @@ export async function applyMetadata(bookId, data) {
   if (!res.ok) throw new Error('Failed to apply metadata')
 }
 
+// SMTP admin
+export async function fetchSmtpConfig() {
+  const res = await fetch(`${BASE}/settings/smtp`)
+  if (!res.ok) throw new Error('Failed to fetch SMTP config')
+  return res.json()
+}
+
+export async function saveSmtpConfig(config) {
+  const res = await fetch(`${BASE}/settings/smtp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to save SMTP config')
+  }
+}
+
+export async function testSmtp() {
+  const res = await fetch(`${BASE}/settings/smtp/test`, { method: 'POST' })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'SMTP test failed')
+  }
+}
+
 // Calibre import
 export async function importCalibre(calibrePath) {
   const res = await fetch(`${BASE}/library/import-calibre`, {

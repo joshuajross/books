@@ -1,5 +1,8 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
+import json
+
+_OVERRIDES_FILE = Path("/data/settings.json")
 
 
 class Settings(BaseSettings):
@@ -23,3 +26,12 @@ class Settings(BaseSettings):
 
 settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
+
+# Apply any saved overrides from the admin UI
+if _OVERRIDES_FILE.exists():
+    try:
+        for key, value in json.loads(_OVERRIDES_FILE.read_text()).items():
+            if hasattr(settings, key):
+                object.__setattr__(settings, key, value)
+    except Exception:
+        pass
