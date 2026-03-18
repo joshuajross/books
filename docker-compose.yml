@@ -12,6 +12,8 @@ services:
       - SMTP_USER=
       - SMTP_PASSWORD=
       - SMTP_FROM=
+      # Metadata providers (optional)
+      - GOOGLE_BOOKS_API_KEY=
     restart: unless-stopped
 
 volumes:

@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { BookOpen, Upload, Library } from 'lucide-react'
+import { BookOpen, Upload, Library, Settings } from 'lucide-react'
 
 export default function Layout() {
   return (
@@ -29,6 +29,15 @@ export default function Layout() {
             >
               <Upload className="w-4 h-4" />
               Upload
+            </NavLink>
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                `btn-ghost text-sm ${isActive ? 'bg-gray-100 text-gray-900' : ''}`
+              }
+            >
+              <Settings className="w-4 h-4" />
+              Settings
             </NavLink>
           </nav>
         </div>

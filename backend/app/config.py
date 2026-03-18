@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
 
+    # Metadata providers
+    google_books_api_key: str = ""
+
     class Config:
         env_file = ".env"
 

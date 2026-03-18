@@ -2,21 +2,26 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, Download, Send, Trash2, Edit2, Check, X,
-  BookOpen, Loader2,
+  BookOpen, Loader2, Sparkles, RefreshCw,
 } from 'lucide-react'
-import { fetchBooks, updateBook, deleteBook, sendBook, downloadUrl, fetchSettings } from '../api'
+import { fetchBooks, updateBook, deleteBook, sendBook, downloadUrl, fetchSettings, convertBook } from '../api'
+import MetadataSearch from '../components/MetadataSearch'
+
+const CONVERSION_MATRIX = {
+  epub: ['pdf', 'mobi', 'azw3', 'fb2', 'txt'],
+  pdf:  ['epub', 'txt'],
+  mobi: ['epub', 'pdf', 'azw3'],
+  azw:  ['epub', 'pdf', 'mobi'],
+  azw3: ['epub', 'pdf', 'mobi'],
+  fb2:  ['epub', 'pdf', 'mobi'],
+}
 
 function Field({ label, value, editing, name, onChange }) {
   return (
     <div>
       <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</label>
       {editing ? (
-        <input
-          className="input mt-1"
-          name={name}
-          defaultValue={value}
-          onChange={onChange}
-        />
+        <input className="input mt-1" name={name} defaultValue={value} onChange={onChange} />
       ) : (
         <p className="text-sm text-gray-700 mt-0.5">{value || <span className="text-gray-300">—</span>}</p>
       )}
@@ -34,31 +39,30 @@ export default function BookDetail() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showSend, setShowSend] = useState(false)
+  const [showMeta, setShowMeta] = useState(false)
   const [readerEmail, setReaderEmail] = useState('')
   const [sending, setSending] = useState(false)
   const [sendStatus, setSendStatus] = useState('')
   const [emailConfigured, setEmailConfigured] = useState(false)
+  const [convAvailable, setConvAvailable] = useState(false)
+  const [converting, setConverting] = useState(false)
+  const [convFormat, setConvFormat] = useState('')
+
+  const loadBook = () =>
+    fetchBooks().then((books) => books.find((b) => b.id === Number(id)))
 
   useEffect(() => {
-    Promise.all([
-      fetchBooks().then((books) => books.find((b) => b.id === Number(id))),
-      fetchSettings(),
-    ]).then(([b, settings]) => {
+    Promise.all([loadBook(), fetchSettings()]).then(([b, settings]) => {
       if (!b) { navigate('/'); return }
       setBook(b)
       setEmailConfigured(settings.email_configured)
+      setConvAvailable(settings.conversion_available)
       setLoading(false)
     })
   }, [id, navigate])
 
-  const handleEdit = () => {
-    setEditData({ ...book })
-    setEditing(true)
-  }
-
-  const handleChange = (e) => {
-    setEditData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
-  }
+  const handleEdit = () => { setEditData({ ...book }); setEditing(true) }
+  const handleChange = (e) => setEditData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
 
   const handleSave = async () => {
     setSaving(true)
@@ -66,37 +70,37 @@ export default function BookDetail() {
       const updated = await updateBook(book.id, editData)
       setBook(updated)
       setEditing(false)
-    } catch {
-      alert('Failed to save.')
-    } finally {
-      setSaving(false)
-    }
+    } catch { alert('Failed to save.') }
+    finally { setSaving(false) }
   }
 
   const handleDelete = async () => {
     if (!confirm(`Delete "${book.title}"? This cannot be undone.`)) return
     setDeleting(true)
-    try {
-      await deleteBook(book.id)
-      navigate('/')
-    } catch {
-      alert('Failed to delete.')
-      setDeleting(false)
-    }
+    try { await deleteBook(book.id); navigate('/') }
+    catch { alert('Failed to delete.'); setDeleting(false) }
   }
 
   const handleSend = async () => {
     if (!readerEmail) return
-    setSending(true)
-    setSendStatus('')
-    try {
-      await sendBook(book.id, readerEmail)
-      setSendStatus('success')
-    } catch (err) {
-      setSendStatus(err.message)
-    } finally {
-      setSending(false)
-    }
+    setSending(true); setSendStatus('')
+    try { await sendBook(book.id, readerEmail); setSendStatus('success') }
+    catch (err) { setSendStatus(err.message) }
+    finally { setSending(false) }
+  }
+
+  const handleConvert = async () => {
+    if (!convFormat) return
+    setConverting(true)
+    try { await convertBook(book.id, convFormat) }
+    catch (err) { alert(err.message) }
+    finally { setConverting(false) }
+  }
+
+  const handleMetaApplied = async () => {
+    const updated = await loadBook()
+    if (updated) setBook(updated)
+    setShowMeta(false)
   }
 
   if (loading) {
@@ -106,6 +110,8 @@ export default function BookDetail() {
       </div>
     )
   }
+
+  const convTargets = CONVERSION_MATRIX[book.file_format] || []
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -127,22 +133,12 @@ export default function BookDetail() {
           {/* Header */}
           <div className="flex-1 min-w-0">
             {editing ? (
-              <input
-                className="input text-lg font-semibold"
-                name="title"
-                defaultValue={book.title}
-                onChange={handleChange}
-              />
+              <input className="input text-lg font-semibold" name="title" defaultValue={book.title} onChange={handleChange} />
             ) : (
               <h1 className="text-xl font-semibold text-gray-900">{book.title}</h1>
             )}
             {editing ? (
-              <input
-                className="input mt-2"
-                name="author"
-                defaultValue={book.author}
-                onChange={handleChange}
-              />
+              <input className="input mt-2" name="author" defaultValue={book.author} onChange={handleChange} />
             ) : (
               <p className="text-gray-500 mt-1">{book.author}</p>
             )}
@@ -167,8 +163,11 @@ export default function BookDetail() {
                   <a href={downloadUrl(book.id)} download className="btn-primary">
                     <Download className="w-4 h-4" /> Download
                   </a>
-                  <button className="btn-ghost" onClick={() => setShowSend(!showSend)}>
+                  <button className="btn-ghost" onClick={() => { setShowSend(!showSend); setShowMeta(false) }}>
                     <Send className="w-4 h-4" /> Send to eReader
+                  </button>
+                  <button className="btn-ghost" onClick={() => { setShowMeta(!showMeta); setShowSend(false) }}>
+                    <Sparkles className="w-4 h-4" /> Fetch Metadata
                   </button>
                   <button className="btn-ghost" onClick={handleEdit}>
                     <Edit2 className="w-4 h-4" /> Edit
@@ -189,7 +188,7 @@ export default function BookDetail() {
             <h3 className="text-sm font-medium text-gray-700 mb-2">Send to eReader</h3>
             {!emailConfigured && (
               <p className="text-xs text-amber-600 mb-2">
-                ⚠ SMTP not configured. Set <code>SMTP_USER</code> and <code>SMTP_PASSWORD</code> in your environment.
+                ⚠ SMTP not configured. Set <code>SMTP_USER</code> and <code>SMTP_PASSWORD</code>.
               </p>
             )}
             <div className="flex gap-2">
@@ -201,26 +200,42 @@ export default function BookDetail() {
                 onChange={(e) => setReaderEmail(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               />
-              <button
-                className="btn-primary flex-shrink-0"
-                onClick={handleSend}
-                disabled={sending || !readerEmail}
-              >
+              <button className="btn-primary flex-shrink-0" onClick={handleSend} disabled={sending || !readerEmail}>
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 Send
               </button>
             </div>
-            {sendStatus === 'success' && (
-              <p className="text-xs text-green-600 mt-2">✓ Sent successfully!</p>
-            )}
-            {sendStatus && sendStatus !== 'success' && (
-              <p className="text-xs text-red-500 mt-2">{sendStatus}</p>
-            )}
+            {sendStatus === 'success' && <p className="text-xs text-green-600 mt-2">✓ Sent successfully!</p>}
+            {sendStatus && sendStatus !== 'success' && <p className="text-xs text-red-500 mt-2">{sendStatus}</p>}
             <p className="text-xs text-gray-400 mt-2">
-              For Kindle, use your <em>@kindle.com</em> address. For Kobo, use Send to Kobo.
+              Kindle: use your <em>@kindle.com</em> address. Kobo: use Send to Kobo.
             </p>
           </div>
         )}
+
+        {/* Convert format */}
+        {convTargets.length > 0 && (
+          <div className="mt-4 flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+            <RefreshCw className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <span className="text-sm text-gray-600 flex-shrink-0">Convert to</span>
+            <select className="input flex-1" value={convFormat} onChange={(e) => setConvFormat(e.target.value)}>
+              <option value="">Choose format…</option>
+              {convTargets.map((f) => <option key={f} value={f}>{f.toUpperCase()}</option>)}
+            </select>
+            <button
+              className="btn-ghost flex-shrink-0"
+              onClick={handleConvert}
+              disabled={!convFormat || converting || !convAvailable}
+              title={!convAvailable ? 'Calibre not installed on server' : ''}
+            >
+              {converting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {convAvailable ? 'Convert & Download' : 'Calibre not installed'}
+            </button>
+          </div>
+        )}
+
+        {/* Metadata search */}
+        {showMeta && <MetadataSearch book={book} onApplied={handleMetaApplied} />}
 
         {/* Metadata grid */}
         <div className="mt-6 grid grid-cols-2 gap-4">
@@ -234,12 +249,7 @@ export default function BookDetail() {
           <div className="mt-4">
             <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Description</label>
             {editing ? (
-              <textarea
-                className="input mt-1 h-24 resize-none"
-                name="description"
-                defaultValue={book.description}
-                onChange={handleChange}
-              />
+              <textarea className="input mt-1 h-24 resize-none" name="description" defaultValue={book.description} onChange={handleChange} />
             ) : (
               <p className="text-sm text-gray-600 mt-1 leading-relaxed">{book.description}</p>
             )}
