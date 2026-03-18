@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Built frontend (inside backend)
+backend/static/
+
+# Data
+/data/
+*.db
+uploads/
+
+# Env
+.env
+
+# OS
+.DS_Store
+*.swp

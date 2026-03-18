@@ -1,0 +1,18 @@
+services:
+  bookshelf:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - bookshelf_data:/data
+    environment:
+      # Email settings (optional — needed for "Send to eReader")
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=
+      - SMTP_PASSWORD=
+      - SMTP_FROM=
+    restart: unless-stopped
+
+volumes:
+  bookshelf_data:
