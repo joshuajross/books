@@ -23,9 +23,16 @@ class MetadataResult:
         return {k: v for k, v in self.__dict__.items() if v}
 
 
+def _extract_isbn(query: str) -> str | None:
+    """Return bare ISBN digits if query is 'isbn:XXXXX', else None."""
+    m = re.match(r"^isbn:(\d{10,13})$", query.strip(), re.IGNORECASE)
+    return m.group(1) if m else None
+
+
 async def search_google_books(query: str, api_key: str = "") -> list[MetadataResult]:
-    """Search Google Books API and return up to 5 results."""
-    q = "+".join(query.split())
+    """Search Google Books API. Uses isbn: prefix for ISBN lookups."""
+    isbn = _extract_isbn(query)
+    q = f"isbn:{isbn}" if isbn else "+".join(query.split())
     url = f"https://www.googleapis.com/books/v1/volumes?q={q}&maxResults=5"
     if api_key:
         url += f"&key={api_key}"
@@ -40,53 +47,99 @@ async def search_google_books(query: str, api_key: str = "") -> list[MetadataRes
         for item in data.get("items", []):
             info = item.get("volumeInfo", {})
 
-            # ISBN
-            isbn = ""
+            isbn_val = ""
             for idf in info.get("industryIdentifiers", []):
                 if idf.get("type") == "ISBN_13":
-                    isbn = idf.get("identifier", "")
+                    isbn_val = idf.get("identifier", "")
                     break
-            if not isbn:
+            if not isbn_val:
                 for idf in info.get("industryIdentifiers", []):
                     if idf.get("type") == "ISBN_10":
-                        isbn = idf.get("identifier", "")
+                        isbn_val = idf.get("identifier", "")
                         break
 
-            # Cover — bump to larger resolution
             cover_url = ""
             image_links = info.get("imageLinks", {})
             if image_links:
-                cover_url = image_links.get(
-                    "thumbnail",
-                    image_links.get("smallThumbnail", ""),
-                )
-                # Request higher resolution
+                cover_url = image_links.get("thumbnail", image_links.get("smallThumbnail", ""))
                 cover_url = re.sub(r"zoom=\d", "zoom=2", cover_url)
                 cover_url = cover_url.replace("http://", "https://")
 
-            results.append(
-                MetadataResult(
-                    title=info.get("title", ""),
-                    author=", ".join(info.get("authors", [])),
-                    description=re.sub(r"<[^>]+>", "", info.get("description", "")),
-                    publisher=info.get("publisher", ""),
-                    language=info.get("language", ""),
-                    isbn=isbn,
-                    tags=", ".join(info.get("categories", [])),
-                    cover_url=cover_url,
-                    source="google",
-                )
-            )
+            results.append(MetadataResult(
+                title=info.get("title", ""),
+                author=", ".join(info.get("authors", [])),
+                description=re.sub(r"<[^>]+>", "", info.get("description", "")),
+                publisher=info.get("publisher", ""),
+                language=info.get("language", ""),
+                isbn=isbn_val,
+                tags=", ".join(info.get("categories", [])),
+                cover_url=cover_url,
+                source="google",
+            ))
     except Exception:
         pass
 
     return results
 
 
-async def search_openlibrary(query: str) -> list[MetadataResult]:
-    """Search OpenLibrary and return up to 5 results."""
-    url = f"https://openlibrary.org/search.json?q={query}&limit=5&fields=title,author_name,isbn,publisher,language,subject,cover_i,first_sentence"
+async def _openlibrary_by_isbn(isbn: str) -> list[MetadataResult]:
+    """Exact ISBN lookup via OpenLibrary Books API."""
+    url = f"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&jscmd=data&format=json"
+    results = []
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
 
+        book = data.get(f"ISBN:{isbn}")
+        if not book:
+            return results
+
+        # Prefer ISBN-13 from identifiers if available
+        isbn_val = isbn
+        for val in book.get("identifiers", {}).get("isbn_13", []):
+            if str(val).isdigit() and len(str(val)) == 13:
+                isbn_val = str(val)
+                break
+
+        covers = book.get("cover", {})
+        cover_url = covers.get("large") or covers.get("medium") or covers.get("small", "")
+
+        desc = book.get("description", "")
+        if isinstance(desc, dict):
+            desc = desc.get("value", "")
+
+        publishers = book.get("publishers", [])
+        publisher = publishers[0].get("name", "") if publishers else ""
+
+        subjects = [s.get("name", "") for s in book.get("subjects", [])[:5]]
+
+        results.append(MetadataResult(
+            title=book.get("title", ""),
+            author=", ".join(a.get("name", "") for a in book.get("authors", [])),
+            description=str(desc),
+            publisher=publisher,
+            isbn=isbn_val,
+            tags=", ".join(subjects),
+            cover_url=cover_url,
+            source="openlibrary",
+        ))
+    except Exception:
+        pass
+    return results
+
+
+async def search_openlibrary(query: str) -> list[MetadataResult]:
+    """Search OpenLibrary. Uses exact Books API for ISBN queries."""
+    isbn = _extract_isbn(query)
+    if isbn:
+        return await _openlibrary_by_isbn(isbn)
+
+    url = (
+        f"https://openlibrary.org/search.json?q={query}&limit=5"
+        f"&fields=title,author_name,isbn,publisher,language,subject,cover_i,first_sentence"
+    )
     results = []
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -95,15 +148,14 @@ async def search_openlibrary(query: str) -> list[MetadataResult]:
             data = resp.json()
 
         for doc in data.get("docs", []):
-            isbn = ""
+            isbn_val = ""
             isbns = doc.get("isbn", [])
-            # Prefer ISBN-13
             for i in isbns:
                 if len(i) == 13:
-                    isbn = i
+                    isbn_val = i
                     break
-            if not isbn and isbns:
-                isbn = isbns[0]
+            if not isbn_val and isbns:
+                isbn_val = isbns[0]
 
             cover_url = ""
             cover_id = doc.get("cover_i")
@@ -118,21 +170,18 @@ async def search_openlibrary(query: str) -> list[MetadataResult]:
                 description = first_sentence[0]
 
             lang_codes = doc.get("language", [])
-            language = lang_codes[0] if lang_codes else ""
 
-            results.append(
-                MetadataResult(
-                    title=doc.get("title", ""),
-                    author=", ".join(doc.get("author_name", [])),
-                    description=description,
-                    publisher=", ".join(doc.get("publisher", [])[:1]),
-                    language=language,
-                    isbn=isbn,
-                    tags=", ".join(doc.get("subject", [])[:5]),
-                    cover_url=cover_url,
-                    source="openlibrary",
-                )
-            )
+            results.append(MetadataResult(
+                title=doc.get("title", ""),
+                author=", ".join(doc.get("author_name", [])),
+                description=description,
+                publisher=", ".join(doc.get("publisher", [])[:1]),
+                language=lang_codes[0] if lang_codes else "",
+                isbn=isbn_val,
+                tags=", ".join(doc.get("subject", [])[:5]),
+                cover_url=cover_url,
+                source="openlibrary",
+            ))
     except Exception:
         pass
 

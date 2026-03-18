@@ -95,16 +95,18 @@ export default function Upload() {
         continue
       }
 
-      // Auto-fetch metadata
+      // Auto-fetch metadata — prefer ISBN (exact), fall back to title + author
       try {
-        const query = [book.title, book.author].filter(Boolean).join(' ')
-        const isPlaceholder = !query || /^unknown(\s+unknown)?$/i.test(query.trim())
+        const isbnQuery = book.isbn ? `isbn:${book.isbn}` : null
+        const textQuery = [book.title, book.author].filter(Boolean).join(' ')
+        const isPlaceholder = !isbnQuery && (!textQuery || /^unknown(\s+unknown)?$/i.test(textQuery.trim()))
 
         if (!isPlaceholder) {
-          const results = await searchMetadata(query)
+          const results = await searchMetadata(isbnQuery || textQuery)
           const top = results[0]
           if (top) {
-            const { confident } = matchConfidence(book, top)
+            // ISBN is an exact identifier — always confident. Otherwise use word similarity.
+            const confident = isbnQuery ? true : matchConfidence(book, top).confident
 
             if (confident) {
               // Silent apply — enrichment fields only, no dialog
