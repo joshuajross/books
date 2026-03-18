@@ -173,6 +173,20 @@ def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
         # MOBI header begins at offset 16 in record 0 (after PalmDOC header)
         MOBI_OFF = 16
         if rec0[MOBI_OFF:MOBI_OFF + 4] != b"MOBI":
+            # AZW4 (print replica) wraps a PDF — find and extract it
+            pdf_off = data.find(b'%PDF-')
+            if pdf_off != -1:
+                import tempfile, os
+                tmp = Path(tempfile.mktemp(suffix='.pdf'))
+                try:
+                    tmp.write_bytes(data[pdf_off:])
+                    pdf_meta, pdf_cover = extract_pdf_metadata(tmp)
+                    for k, v in pdf_meta.items():
+                        if v and v != tmp.stem:
+                            meta[k] = v
+                    return meta, pdf_cover
+                finally:
+                    tmp.unlink(missing_ok=True)
             log.warning("MOBI magic not found in %s — got %r (first 32 bytes of rec0: %s)",
                         file_path.name, rec0[MOBI_OFF:MOBI_OFF + 4], rec0[:32].hex())
             return meta, None
@@ -292,39 +306,48 @@ def extract_lrf_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
             if thumb_type in (1, 2) and 0 < thumb_size <= len(data) - 48:
                 cover_data = data[48:48 + thumb_size]
 
-        # BookInformation metadata is a UTF-16LE XML block embedded in the file
-        marker = '<BookInformation'.encode('utf-16-le')
-        end_marker = '</BookInformation>'.encode('utf-16-le')
-        start = data.find(marker)
-        if start == -1:
-            log.warning("LRF: no <BookInformation> block found in %s", file_path.name)
-        if start != -1:
-            end = data.find(end_marker, start)
-            if end == -1:
-                log.warning("LRF: found <BookInformation> but no closing tag in %s", file_path.name)
-            if end != -1:
-                xml_text = data[start:end + len(end_marker)].decode('utf-16-le', errors='replace')
+        # LRF stores metadata as UTF-16LE XML objects.
+        # Search for each tag directly in the binary stream.
+        GT16 = b'\x3e\x00'  # '>' in UTF-16LE
 
-                def get_lrf_tag(tag: str) -> str:
-                    m = re.search(rf'<{tag}[^>]*>([^<]+)</{tag}>', xml_text, re.IGNORECASE)
-                    return m.group(1).strip() if m else ''
+        def find_utf16_tag(tag: str) -> str:
+            open_bytes = f'<{tag}'.encode('utf-16-le')
+            close_bytes = f'</{tag}>'.encode('utf-16-le')
+            pos = data.find(open_bytes)
+            if pos == -1:
+                return ''
+            gt_pos = data.find(GT16, pos + len(open_bytes))
+            if gt_pos == -1:
+                return ''
+            content_start = gt_pos + len(GT16)
+            end_pos = data.find(close_bytes, content_start)
+            if end_pos == -1:
+                return ''
+            raw = data[content_start:end_pos]
+            # Ensure even-length for UTF-16LE decode
+            if len(raw) % 2 != 0:
+                raw = raw[:-1]
+            return raw.decode('utf-16-le', errors='replace').strip()
 
-                title = get_lrf_tag('Title')
-                author = get_lrf_tag('Author')
-                publisher = get_lrf_tag('Publisher')
-                description = get_lrf_tag('Abstract')
-                language = get_lrf_tag('Language')
+        title = find_utf16_tag('Title')
+        author = find_utf16_tag('Author')
+        publisher = find_utf16_tag('Publisher')
+        description = find_utf16_tag('Abstract')
+        language = find_utf16_tag('Language')
 
-                if title:
-                    meta['title'] = title
-                if author:
-                    meta['author'] = author
-                if publisher:
-                    meta['publisher'] = publisher
-                if description:
-                    meta['description'] = description
-                if language:
-                    meta['language'] = language
+        if not any([title, author, publisher]):
+            log.warning("LRF: no metadata tags found in %s", file_path.name)
+
+        if title:
+            meta['title'] = title
+        if author:
+            meta['author'] = author
+        if publisher:
+            meta['publisher'] = publisher
+        if description:
+            meta['description'] = description
+        if language:
+            meta['language'] = language
     except Exception:
         log.exception("Failed to parse LRF metadata for %s", file_path.name)
 
