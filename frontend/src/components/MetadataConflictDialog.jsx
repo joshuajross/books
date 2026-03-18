@@ -1,24 +1,16 @@
-import { useState } from 'react'
-import { X, Loader2, BookOpen } from 'lucide-react'
+import { X, BookOpen } from 'lucide-react'
 import { applyMetadata } from '../api'
 
 const ENRICH_FIELDS = ['title', 'author', 'description', 'publisher', 'language', 'isbn', 'tags']
 
 export default function MetadataConfirmDialog({ book, suggestion, onDone }) {
-  const [applying, setApplying] = useState(false)
-
-  const handleApply = async () => {
-    setApplying(true)
-    try {
-      const payload = {}
-      for (const key of ENRICH_FIELDS) {
-        if (suggestion[key]) payload[key] = suggestion[key]
-      }
-      if (suggestion.cover_url) payload.cover_url = suggestion.cover_url
-      await applyMetadata(book.id, payload)
-    } catch { /* non-fatal */ } finally {
-      setApplying(false)
+  const handleApply = () => {
+    const payload = {}
+    for (const key of ENRICH_FIELDS) {
+      if (suggestion[key]) payload[key] = suggestion[key]
     }
+    if (suggestion.cover_url) payload.cover_url = suggestion.cover_url
+    applyMetadata(book.id, payload).catch(() => {}) // fire-and-forget, non-fatal
     onDone()
   }
 
@@ -60,10 +52,7 @@ export default function MetadataConfirmDialog({ book, suggestion, onDone }) {
 
         <div className="p-4 flex gap-2 justify-end">
           <button className="btn-ghost" onClick={onDone}>No, skip</button>
-          <button className="btn-primary" onClick={handleApply} disabled={applying}>
-            {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            Yes, apply
-          </button>
+          <button className="btn-primary" onClick={handleApply}>Yes, apply</button>
         </div>
       </div>
     </div>
