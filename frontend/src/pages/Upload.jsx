@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
-import { Upload as UploadIcon, CheckCircle, XCircle, Loader2, FileText } from 'lucide-react'
-import { uploadBook } from '../api'
+import { Upload as UploadIcon, CheckCircle, XCircle, Loader2, FileText, Sparkles } from 'lucide-react'
+import { uploadBook, searchMetadata } from '../api'
+import MetadataConflictDialog from '../components/MetadataConflictDialog'
 
 const ACCEPTED = {
   'application/epub+zip': ['.epub'],
@@ -10,6 +11,19 @@ const ACCEPTED = {
   'application/x-mobipocket-ebook': ['.mobi'],
   'application/vnd.amazon.ebook': ['.azw', '.azw3'],
   'application/octet-stream': ['.fb2', '.cbz', '.cbr'],
+}
+
+const CONFLICT_FIELDS = ['title', 'author', 'publisher', 'language', 'isbn', 'tags', 'description']
+
+function differs(online, local) {
+  return online && online.trim() !== (local || '').trim()
+}
+
+function hasConflicts(book, suggestion) {
+  return (
+    CONFLICT_FIELDS.some((k) => differs(suggestion[k], book[k])) ||
+    (suggestion.cover_url && !book.cover_path)
+  )
 }
 
 function formatSize(bytes) {
@@ -36,6 +50,7 @@ function FileItem({ file, status, progress, error }) {
       </div>
       <div className="flex-shrink-0">
         {status === 'uploading' && <Loader2 className="w-4 h-4 animate-spin text-brand-500" />}
+        {status === 'fetching' && <Sparkles className="w-4 h-4 animate-pulse text-brand-400" />}
         {status === 'done' && <CheckCircle className="w-4 h-4 text-green-500" />}
         {status === 'error' && <XCircle className="w-4 h-4 text-red-500" />}
       </div>
@@ -46,38 +61,46 @@ function FileItem({ file, status, progress, error }) {
 export default function Upload() {
   const navigate = useNavigate()
   const [queue, setQueue] = useState([])
+  // conflictQueue: array of { book, suggestion } waiting for user review
+  const [conflictQueue, setConflictQueue] = useState([])
+
+  const updateEntry = (idx, patch) =>
+    setQueue((prev) => prev.map((e, j) => (j === idx ? { ...e, ...patch } : e)))
 
   const onDrop = useCallback(async (accepted) => {
     if (!accepted.length) return
-    const entries = accepted.map((file) => ({
-      file,
-      status: 'pending',
-      progress: 0,
-      error: '',
-    }))
+
+    const entries = accepted.map((file) => ({ file, status: 'pending', progress: 0, error: '' }))
+    const baseIdx = queue.length
     setQueue((prev) => [...prev, ...entries])
 
     for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i]
-      const idx = queue.length + i
+      const idx = baseIdx + i
 
-      setQueue((prev) =>
-        prev.map((e, j) => (j === idx ? { ...e, status: 'uploading' } : e))
-      )
+      // Upload
+      updateEntry(idx, { status: 'uploading' })
+      let book
       try {
-        await uploadBook(entry.file, (pct) => {
-          setQueue((prev) =>
-            prev.map((e, j) => (j === idx ? { ...e, progress: pct } : e))
-          )
-        })
-        setQueue((prev) =>
-          prev.map((e, j) => (j === idx ? { ...e, status: 'done', progress: 100 } : e))
-        )
+        book = await uploadBook(entries[i].file, (pct) => updateEntry(idx, { progress: pct }))
+        updateEntry(idx, { status: 'fetching', progress: 100 })
       } catch (err) {
-        setQueue((prev) =>
-          prev.map((e, j) => (j === idx ? { ...e, status: 'error', error: err.message } : e))
-        )
+        updateEntry(idx, { status: 'error', error: err.message })
+        continue
       }
+
+      // Auto-fetch metadata and check for conflicts
+      try {
+        const query = [book.title, book.author].filter(Boolean).join(' ')
+        if (query && query.toLowerCase() !== 'unknown unknown') {
+          const results = await searchMetadata(query)
+          const top = results[0]
+          if (top && hasConflicts(book, top)) {
+            setConflictQueue((prev) => [...prev, { book, suggestion: top }])
+          }
+        }
+      } catch { /* metadata search failure is non-fatal */ }
+
+      updateEntry(idx, { status: 'done' })
     }
   }, [queue.length])
 
@@ -118,15 +141,20 @@ export default function Upload() {
         </div>
       )}
 
-      {allDone && (
+      {allDone && conflictQueue.length === 0 && (
         <div className="mt-4 flex gap-3 justify-end">
-          <button className="btn-ghost" onClick={() => setQueue([])}>
-            Upload more
-          </button>
-          <button className="btn-primary" onClick={() => navigate('/')}>
-            Go to library
-          </button>
+          <button className="btn-ghost" onClick={() => setQueue([])}>Upload more</button>
+          <button className="btn-primary" onClick={() => navigate('/')}>Go to library</button>
         </div>
+      )}
+
+      {/* Show conflicts one at a time */}
+      {conflictQueue.length > 0 && (
+        <MetadataConflictDialog
+          book={conflictQueue[0].book}
+          suggestion={conflictQueue[0].suggestion}
+          onDone={() => setConflictQueue((prev) => prev.slice(1))}
+        />
       )}
     </div>
   )
