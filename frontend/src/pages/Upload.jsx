@@ -163,6 +163,7 @@ export default function Upload() {
 
       {confirmQueue.length > 0 && (
         <MetadataConfirmDialog
+          key={confirmQueue[0].book.id}
           book={confirmQueue[0].book}
           suggestion={confirmQueue[0].suggestion}
           onDone={() => setConfirmQueue((prev) => prev.slice(1))}

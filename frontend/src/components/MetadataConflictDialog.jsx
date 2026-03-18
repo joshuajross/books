@@ -16,7 +16,9 @@ export default function MetadataConfirmDialog({ book, suggestion, onDone }) {
       }
       if (suggestion.cover_url) payload.cover_url = suggestion.cover_url
       await applyMetadata(book.id, payload)
-    } catch { /* non-fatal */ }
+    } catch { /* non-fatal */ } finally {
+      setApplying(false)
+    }
     onDone()
   }
 
