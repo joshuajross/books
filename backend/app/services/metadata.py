@@ -173,6 +173,8 @@ def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
         # MOBI header begins at offset 16 in record 0 (after PalmDOC header)
         MOBI_OFF = 16
         if rec0[MOBI_OFF:MOBI_OFF + 4] != b"MOBI":
+            log.warning("MOBI magic not found in %s — got %r (first 32 bytes of rec0: %s)",
+                        file_path.name, rec0[MOBI_OFF:MOBI_OFF + 4], rec0[:32].hex())
             return meta, None
 
         mobi_len = struct.unpack_from(">I", rec0, MOBI_OFF + 4)[0]
@@ -254,6 +256,7 @@ def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
     except Exception:
         log.exception("Failed to parse MOBI/AZW metadata for %s", file_path.name)
 
+    log.debug("MOBI result for %s — title=%r author=%r", file_path.name, meta["title"], meta["author"])
     return meta, cover_data
 
 
@@ -275,6 +278,8 @@ def extract_lrf_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
 
         # Magic: "LRF" encoded as UTF-16LE
         if not data.startswith(b'\x4c\x00\x52\x00\x46\x00'):
+            log.warning("LRF magic not found in %s — first 8 bytes: %s",
+                        file_path.name, data[:8].hex())
             return meta, None
 
         # Header thumbnail:
@@ -291,8 +296,12 @@ def extract_lrf_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
         marker = '<BookInformation'.encode('utf-16-le')
         end_marker = '</BookInformation>'.encode('utf-16-le')
         start = data.find(marker)
+        if start == -1:
+            log.warning("LRF: no <BookInformation> block found in %s", file_path.name)
         if start != -1:
             end = data.find(end_marker, start)
+            if end == -1:
+                log.warning("LRF: found <BookInformation> but no closing tag in %s", file_path.name)
             if end != -1:
                 xml_text = data[start:end + len(end_marker)].decode('utf-16-le', errors='replace')
 
@@ -319,6 +328,7 @@ def extract_lrf_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
     except Exception:
         log.exception("Failed to parse LRF metadata for %s", file_path.name)
 
+    log.debug("LRF result for %s — title=%r author=%r", file_path.name, meta["title"], meta["author"])
     return meta, cover_data
 
 
