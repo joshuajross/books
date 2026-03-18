@@ -15,6 +15,7 @@ from app.config import settings
 from .auth import get_current_user
 
 router = APIRouter(prefix="/api/books", tags=["books"], dependencies=[Depends(get_current_user)])
+public_router = APIRouter(prefix="/api/books", tags=["books"])
 
 ALLOWED_FORMATS = {".epub", ".pdf", ".mobi", ".azw", ".azw3", ".fb2", ".cbz", ".cbr", ".lrf"}
 
@@ -185,7 +186,7 @@ async def serve_raw(book_id: int, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.get("/cover/{filename}")
+@public_router.get("/cover/{filename}")
 async def get_cover(filename: str):
     cover_path = settings.upload_dir / filename
     if not cover_path.exists():

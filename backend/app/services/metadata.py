@@ -1,10 +1,13 @@
 """Extract metadata and covers from ebook files."""
+import logging
 import re
 import struct
 import zipfile
 import io
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 
 def extract_epub_metadata(file_path: Path) -> dict:
@@ -249,7 +252,7 @@ def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
                     cover_data = None
 
     except Exception:
-        pass
+        log.exception("Failed to parse MOBI/AZW metadata for %s", file_path.name)
 
     return meta, cover_data
 
@@ -314,7 +317,7 @@ def extract_lrf_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
                 if language:
                     meta['language'] = language
     except Exception:
-        pass
+        log.exception("Failed to parse LRF metadata for %s", file_path.name)
 
     return meta, cover_data
 

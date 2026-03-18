@@ -26,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(books.public_router)
 app.include_router(books.router)
 app.include_router(send.router)
 app.include_router(settings_router.router)
