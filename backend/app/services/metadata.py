@@ -174,9 +174,9 @@ def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
 
         mobi_len = struct.unpack_from(">I", rec0, MOBI_OFF + 4)[0]
 
-        # Title stored inside record 0
-        title_off = struct.unpack_from(">I", rec0, MOBI_OFF + 84)[0]
-        title_len = struct.unpack_from(">I", rec0, MOBI_OFF + 88)[0]
+        # Title stored inside record 0 (offsets relative to start of MOBI header)
+        title_off = struct.unpack_from(">I", rec0, MOBI_OFF + 68)[0]
+        title_len = struct.unpack_from(">I", rec0, MOBI_OFF + 72)[0]
         if title_off and title_len:
             raw = rec0[title_off:title_off + title_len]
             t = raw.decode("utf-8", errors="replace").strip()
@@ -184,10 +184,10 @@ def extract_mobi_metadata(file_path: Path) -> tuple[dict, Optional[bytes]]:
                 meta["title"] = t
 
         # First image record index (for cover extraction)
-        first_image_rec = struct.unpack_from(">I", rec0, MOBI_OFF + 108)[0]
+        first_image_rec = struct.unpack_from(">I", rec0, MOBI_OFF + 92)[0]
 
         # EXTH present if bit 6 of flags is set
-        exth_flags = struct.unpack_from(">I", rec0, MOBI_OFF + 128)[0]
+        exth_flags = struct.unpack_from(">I", rec0, MOBI_OFF + 112)[0]
         cover_offset_exth = None
 
         if exth_flags & 0x40:
