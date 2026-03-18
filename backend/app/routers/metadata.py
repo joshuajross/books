@@ -14,15 +14,15 @@ router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 
 
 class MetadataSearchResult(BaseModel):
-    title: str
-    author: str
-    description: str
-    publisher: str
-    language: str
-    isbn: str
-    tags: str
-    cover_url: str
-    source: str
+    title: str = ""
+    author: str = ""
+    description: str = ""
+    publisher: str = ""
+    language: str = ""
+    isbn: str = ""
+    tags: str = ""
+    cover_url: str = ""
+    source: str = ""
 
 
 class ApplyMetadataRequest(BaseModel):
