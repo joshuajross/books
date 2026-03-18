@@ -12,7 +12,9 @@ from app.models.database import Book, get_db
 from app.services.metadata import extract_metadata
 from app.config import settings
 
-router = APIRouter(prefix="/api/books", tags=["books"])
+from .auth import get_current_user
+
+router = APIRouter(prefix="/api/books", tags=["books"], dependencies=[Depends(get_current_user)])
 
 ALLOWED_FORMATS = {".epub", ".pdf", ".mobi", ".azw", ".azw3", ".fb2", ".cbz", ".cbr"}
 

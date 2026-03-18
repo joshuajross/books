@@ -1,7 +1,10 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { BookOpen, Upload, Library, Settings } from 'lucide-react'
+import { BookOpen, Upload, Library, Settings, LogOut } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export default function Layout() {
+  const { logout } = useAuth()
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
@@ -39,6 +42,9 @@ export default function Layout() {
               <Settings className="w-4 h-4" />
               Settings
             </NavLink>
+            <button className="btn-ghost text-sm text-gray-500" onClick={logout} title="Sign out">
+              <LogOut className="w-4 h-4" />
+            </button>
           </nav>
         </div>
       </header>

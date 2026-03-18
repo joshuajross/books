@@ -5,8 +5,9 @@ from pydantic import BaseModel
 
 from app.models.database import get_db
 from app.config import settings
+from .auth import get_current_user
 
-router = APIRouter(prefix="/api/library", tags=["library"])
+router = APIRouter(prefix="/api/library", tags=["library"], dependencies=[Depends(get_current_user)])
 
 
 class ImportRequest(BaseModel):

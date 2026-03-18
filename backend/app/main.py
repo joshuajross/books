@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import os
 
 from app.models.database import init_db
-from app.routers import books, send, settings_router, opds, metadata, library
+from app.routers import books, send, settings_router, opds, metadata, library, auth
 from app.config import settings as app_settings
 
 
@@ -25,6 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(books.router)
 app.include_router(send.router)
 app.include_router(settings_router.router)

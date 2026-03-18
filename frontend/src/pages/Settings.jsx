@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Loader2, CheckCircle, XCircle, Database, Rss, RefreshCw, Mail, Send } from 'lucide-react'
+import { Loader2, CheckCircle, XCircle, Database, Rss, RefreshCw, Mail, Send, KeyRound } from 'lucide-react'
 import { fetchSettings, importCalibre, fetchSmtpConfig, saveSmtpConfig, testSmtp } from '../api'
+import { useAuth } from '../context/AuthContext'
 
 function StatusBadge({ ok }) {
   return ok
@@ -98,6 +99,58 @@ function SmtpForm() {
   )
 }
 
+function ChangePasswordForm() {
+  const { changePassword } = useAuth()
+  const [form, setForm] = useState({ current: '', next: '', confirm: '' })
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState('')
+
+  const set = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }))
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    if (form.next !== form.confirm) { setStatus('error:Passwords do not match'); return }
+    setSaving(true)
+    setStatus('')
+    try {
+      await changePassword(form.current, form.next)
+      setStatus('ok')
+      setForm({ current: '', next: '', confirm: '' })
+    } catch (err) {
+      setStatus(`error:${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSave} className="space-y-3">
+      <div>
+        <label className="text-xs font-medium text-gray-500 mb-1 block">Current password</label>
+        <input className="input" type="password" name="current" value={form.current} onChange={set} autoComplete="current-password" required />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-1 block">New password</label>
+          <input className="input" type="password" name="next" value={form.next} onChange={set} autoComplete="new-password" required minLength={8} />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-1 block">Confirm</label>
+          <input className="input" type="password" name="confirm" value={form.confirm} onChange={set} autoComplete="new-password" required minLength={8} />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 pt-1">
+        <button className="btn-primary" type="submit" disabled={saving}>
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          Update password
+        </button>
+        {status === 'ok' && <span className="text-xs text-green-600">✓ Password updated</span>}
+        {status.startsWith('error:') && <span className="text-xs text-red-500">{status.slice(6)}</span>}
+      </div>
+    </form>
+  )
+}
+
 export default function Settings() {
   const [srvSettings, setSrvSettings] = useState(null)
   const [calibrePath, setCalibrePath] = useState('')
@@ -175,6 +228,15 @@ export default function Settings() {
             Copy
           </button>
         </div>
+      </div>
+
+      {/* Change Password */}
+      <div className="card p-5">
+        <h2 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+          <KeyRound className="w-4 h-4 text-brand-500" /> Change Password
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">New password must be at least 8 characters.</p>
+        <ChangePasswordForm />
       </div>
 
       {/* Calibre Import */}

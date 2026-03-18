@@ -9,8 +9,9 @@ from typing import Optional
 from app.models.database import Book, get_db
 from app.services.metadata_providers import search_all
 from app.config import settings
+from .auth import get_current_user
 
-router = APIRouter(prefix="/api/metadata", tags=["metadata"])
+router = APIRouter(prefix="/api/metadata", tags=["metadata"], dependencies=[Depends(get_current_user)])
 
 
 class MetadataSearchResult(BaseModel):

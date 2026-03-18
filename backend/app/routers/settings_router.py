@@ -3,11 +3,12 @@ import json
 import aiosmtplib
 from email.mime.text import MIMEText
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from app.config import settings
+from .auth import get_current_user
 
-router = APIRouter(prefix="/api/settings", tags=["settings"])
+router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(get_current_user)])
 
 _OVERRIDES_FILE = Path("/data/settings.json")
 

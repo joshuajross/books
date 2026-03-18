@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # Metadata providers
     google_books_api_key: str = ""
 
+    # Auth
+    admin_username: str = "admin"
+    admin_password: str = "changeme"
+    admin_password_hash: str = ""  # bcrypt hash — set when changed via UI, takes priority
+    jwt_secret: str = ""  # if empty, a random secret is used (tokens expire on restart)
+
     class Config:
         env_file = ".env"
 

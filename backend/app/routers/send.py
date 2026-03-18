@@ -7,8 +7,9 @@ from pydantic import BaseModel, EmailStr
 from app.models.database import Book, get_db
 from app.services.email_sender import send_book_to_reader
 from app.config import settings
+from .auth import get_current_user
 
-router = APIRouter(prefix="/api/send", tags=["send"])
+router = APIRouter(prefix="/api/send", tags=["send"], dependencies=[Depends(get_current_user)])
 
 
 class SendRequest(BaseModel):
